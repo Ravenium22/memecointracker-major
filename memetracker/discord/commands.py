@@ -104,7 +104,7 @@ async def call_embed(db: Database, query: str) -> discord.Embed:
             f"Price T0: `{alert['price_alert']:.10g}`",
             f"Price +15s: `{alert['price_15s']:.10g}`" if alert["price_15s"] is not None else "Price +15s: `pending`",
             f"MC: {format_money(alert['mcap_alert'])}",
-            f"Padre: {alert['padre_url']}",
+            f"Terminal: {alert['padre_url']}",
         ]
         for result in results:
             status = "WIN" if result["is_win_alert"] else "LOSS"
@@ -124,16 +124,41 @@ def active_embed(tracker: CieloAlertTracker) -> discord.Embed:
     return embed
 
 
-def padre_view(token_address: str) -> discord.ui.View:
+TERMINAL_TRADE_URL = "https://trade.padre.gg/trade/solana/{token}"
+TERMINAL_SIGNUP_URL = "https://trade.padre.gg/rk/major69"
+DEXSCREENER_URL = "https://dexscreener.com/solana/{token}"
+DEFINED_URL = "https://www.defined.fi/token/sol/{token}"
+
+
+def alert_view(token_address: str, signup_url: str = TERMINAL_SIGNUP_URL) -> discord.ui.View:
     view = discord.ui.View(timeout=None)
-    view.add_item(
-        discord.ui.Button(
-            label="Open Padre",
-            style=discord.ButtonStyle.link,
-            url=f"https://trade.padre.gg/trade/solana/{token_address}",
-        )
-    )
+    link = discord.ButtonStyle.link
+    view.add_item(discord.ui.Button(label="Trade on Terminal", style=link, url=TERMINAL_TRADE_URL.format(token=token_address), row=0))
+    view.add_item(discord.ui.Button(label="Dexscreener", style=link, url=DEXSCREENER_URL.format(token=token_address), row=0))
+    view.add_item(discord.ui.Button(label="Defined", style=link, url=DEFINED_URL.format(token=token_address), row=0))
+    view.add_item(discord.ui.Button(label="Sign-up on Terminal", style=link, url=signup_url, row=1))
     return view
+
+
+def alert_reply_content(market_cap: float | None, age: str | None) -> str:
+    return f"Mcap: {format_money(market_cap)} · Age: {age or 'n/a'}"
+
+
+def format_age(pair_created_at_ms: int | None, now: datetime | None = None) -> str | None:
+    if not pair_created_at_ms:
+        return None
+    now = now or datetime.now(UTC)
+    seconds = int(now.timestamp() - pair_created_at_ms / 1000)
+    if seconds < 0:
+        return None
+    days, rem = divmod(seconds, 86_400)
+    hours, rem = divmod(rem, 3_600)
+    minutes = rem // 60
+    if days:
+        return f"{days}d {hours}h" if hours else f"{days}d"
+    if hours:
+        return f"{hours}h {minutes}m" if minutes else f"{hours}h"
+    return f"{max(minutes, 1)}m"
 
 
 def short_ca(value: str) -> str:

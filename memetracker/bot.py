@@ -7,7 +7,15 @@ import discord
 
 from memetracker.config import Config
 from memetracker.database import Database
-from memetracker.discord.commands import active_embed, call_embed, padre_view, setup_commands, stats_embed
+from memetracker.discord.commands import (
+    active_embed,
+    alert_reply_content,
+    alert_view,
+    call_embed,
+    format_age,
+    setup_commands,
+    stats_embed,
+)
 from memetracker.discord.parser import parse_discord_calls
 from memetracker.market.dexscreener import DexScreenerClient
 from memetracker.market.tracker import CieloAlertTracker
@@ -95,8 +103,10 @@ class MemeTrackerBot(discord.Client):
         self._schedule_delayed_embed_suppression(message.channel.id, message.id)
         inserted = 0
         for parsed in parsed_calls:
-            await self._send_padre_button(message, parsed.ticker or parsed.contract_address, parsed.contract_address)
             data = await self.dex.get_current_market_data(parsed.contract_address)
+            market_cap = (data.market_cap if data else None) or parsed.market_cap_from_message
+            age = parsed.token_age or format_age(data.pair_created_at if data else None)
+            await self._send_alert_reply(message, parsed.contract_address, market_cap, age)
             if not data:
                 log.warning("[DEX] no pair found for %s", parsed.contract_address)
                 continue
@@ -145,15 +155,21 @@ class MemeTrackerBot(discord.Client):
             return
         await self._suppress_source_embeds(message)
 
-    async def _send_padre_button(self, message: discord.Message, label: str, token_address: str) -> None:
+    async def _send_alert_reply(
+        self,
+        message: discord.Message,
+        token_address: str,
+        market_cap: float | None,
+        age: str | None,
+    ) -> None:
         try:
             await message.reply(
-                content=f"Padre `{label}`",
-                view=padre_view(token_address),
+                content=alert_reply_content(market_cap, age),
+                view=alert_view(token_address),
                 mention_author=False,
             )
         except discord.HTTPException as exc:
-            log.warning("[DISCORD] could not send Padre button for %s: %s", token_address, exc)
+            log.warning("[DISCORD] could not send alert buttons for %s: %s", token_address, exc)
 
     async def _handle_text_command(self, message: discord.Message) -> bool:
         content = (message.content or "").strip()
